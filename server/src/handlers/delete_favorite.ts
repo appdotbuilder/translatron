@@ -1,13 +1,26 @@
+import { db } from '../db';
+import { favoriteTranslationsTable } from '../db/schema';
+import { and, eq } from 'drizzle-orm';
 import { type DeleteFavoriteInput } from '../schema';
 
-export async function deleteFavorite(input: DeleteFavoriteInput): Promise<{ success: boolean }> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find the favorite record by translation_id and user_id
-    // 2. Delete the favorite record from the database
-    // 3. Return success status
+export const deleteFavorite = async (input: DeleteFavoriteInput): Promise<{ success: boolean }> => {
+  try {
+    // Delete the favorite record matching both translation_id and user_id
+    const result = await db.delete(favoriteTranslationsTable)
+      .where(
+        and(
+          eq(favoriteTranslationsTable.translation_id, input.translation_id),
+          eq(favoriteTranslationsTable.user_id, input.user_id)
+        )
+      )
+      .execute();
+
+    // Check if any rows were affected (deleted)
+    const success = (result.rowCount ?? 0) > 0;
     
-    return Promise.resolve({
-        success: true // Placeholder - would indicate actual deletion success
-    });
-}
+    return { success };
+  } catch (error) {
+    console.error('Delete favorite failed:', error);
+    throw error;
+  }
+};

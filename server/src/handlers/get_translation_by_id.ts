@@ -1,24 +1,48 @@
+import { db } from '../db';
+import { translationsTable } from '../db/schema';
 import { type Translation } from '../schema';
+import { eq } from 'drizzle-orm';
 
-export async function getTranslationById(id: number, userId?: string): Promise<Translation | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Fetch a specific translation by its ID
-    // 2. Optionally check if it belongs to the user or is public
-    // 3. Return the translation record or null if not found
-    
-    // Mock data for now
-    if (id === 1) {
-        return Promise.resolve({
-            id: 1,
-            source_text: '你好世界',
-            translated_text: 'Hello World',
-            source_language: 'zh' as const,
-            target_language: 'en' as const,
-            user_id: userId ?? null,
-            created_at: new Date()
-        } as Translation);
+export const getTranslationById = async (id: number, userId?: string): Promise<Translation | null> => {
+  try {
+    // Fetch translation by ID
+    const result = await db.select()
+      .from(translationsTable)
+      .where(eq(translationsTable.id, id))
+      .execute();
+
+    if (result.length === 0) {
+      return null;
     }
-    
-    return Promise.resolve(null);
-}
+
+    const translation = result[0];
+
+    // Check access permissions:
+    // - If userId is provided, user can access their own translations or public ones (user_id is null)
+    // - If userId is not provided, only public translations are accessible
+    if (userId) {
+      // User can access their own translations or public ones
+      if (translation.user_id !== null && translation.user_id !== userId) {
+        return null; // Translation belongs to another user
+      }
+    } else {
+      // Anonymous user can only access public translations
+      if (translation.user_id !== null) {
+        return null; // Translation is private
+      }
+    }
+
+    return {
+      id: translation.id,
+      source_text: translation.source_text,
+      translated_text: translation.translated_text,
+      source_language: translation.source_language,
+      target_language: translation.target_language,
+      user_id: translation.user_id,
+      created_at: translation.created_at
+    };
+  } catch (error) {
+    console.error('Failed to get translation by id:', error);
+    throw error;
+  }
+};

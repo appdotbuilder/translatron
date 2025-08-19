@@ -1,34 +1,62 @@
+import { db } from '../db';
+import { translationsTable, favoriteTranslationsTable } from '../db/schema';
 import { type GetTranslationHistoryInput, type TranslationWithFavorite } from '../schema';
+import { desc, eq, and, isNull, type SQL } from 'drizzle-orm';
 
 export async function getTranslationHistory(input: GetTranslationHistoryInput): Promise<TranslationWithFavorite[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Fetch translation history from the database with pagination
-    // 2. Include favorite status for each translation if user_id is provided
-    // 3. Order by creation date (newest first)
-    // 4. Apply limit and offset for pagination
+  try {
+    // Build the base query
+    const baseQuery = db.select({
+      id: translationsTable.id,
+      source_text: translationsTable.source_text,
+      translated_text: translationsTable.translated_text,
+      source_language: translationsTable.source_language,
+      target_language: translationsTable.target_language,
+      user_id: translationsTable.user_id,
+      created_at: translationsTable.created_at,
+      favorite_id: favoriteTranslationsTable.id // This will be null if not favorited
+    })
+    .from(translationsTable)
+    .leftJoin(
+      favoriteTranslationsTable,
+      and(
+        eq(favoriteTranslationsTable.translation_id, translationsTable.id),
+        // Only join favorites for the specific user if user_id is provided
+        input.user_id ? eq(favoriteTranslationsTable.user_id, input.user_id) : isNull(favoriteTranslationsTable.user_id)
+      )
+    );
+
+    // Determine if we need to filter by user_id
+    const needsFilter = input.user_id !== undefined && input.user_id === null;
     
-    // Mock data for now
-    return Promise.resolve([
-        {
-            id: 1,
-            source_text: '你好世界',
-            translated_text: 'Hello World',
-            source_language: 'zh' as const,
-            target_language: 'en' as const,
-            user_id: input.user_id ?? null,
-            created_at: new Date(),
-            is_favorite: false
-        },
-        {
-            id: 2,
-            source_text: 'Good morning',
-            translated_text: '早上好',
-            source_language: 'en' as const,
-            target_language: 'zh' as const,
-            user_id: input.user_id ?? null,
-            created_at: new Date(Date.now() - 3600000), // 1 hour ago
-            is_favorite: true
-        }
-    ]);
+    // Execute the query with conditional where clause
+    const results = needsFilter
+      ? await baseQuery
+          .where(isNull(translationsTable.user_id))
+          .orderBy(desc(translationsTable.created_at))
+          .limit(input.limit)
+          .offset(input.offset)
+          .execute()
+      : await baseQuery
+          .orderBy(desc(translationsTable.created_at))
+          .limit(input.limit)
+          .offset(input.offset)
+          .execute();
+
+    // Transform results to include is_favorite boolean
+    return results.map(result => ({
+      id: result.id,
+      source_text: result.source_text,
+      translated_text: result.translated_text,
+      source_language: result.source_language,
+      target_language: result.target_language,
+      user_id: result.user_id,
+      created_at: result.created_at,
+      is_favorite: result.favorite_id !== null // True if there's a corresponding favorite record
+    }));
+
+  } catch (error) {
+    console.error('Translation history retrieval failed:', error);
+    throw error;
+  }
 }

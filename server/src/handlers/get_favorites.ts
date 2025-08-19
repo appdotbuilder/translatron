@@ -1,35 +1,36 @@
+import { db } from '../db';
+import { translationsTable, favoriteTranslationsTable } from '../db/schema';
 import { type GetFavoritesInput, type TranslationWithFavorite } from '../schema';
+import { eq, desc } from 'drizzle-orm';
 
-export async function getFavorites(input: GetFavoritesInput): Promise<TranslationWithFavorite[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Fetch all favorite translations for the specified user
-    // 2. Join with translation data to get complete translation details
-    // 3. Apply pagination with limit and offset
-    // 4. Order by favorite creation date (newest first)
-    // 5. Set is_favorite to true for all returned records
-    
-    // Mock data for now
-    return Promise.resolve([
-        {
-            id: 2,
-            source_text: 'Good morning',
-            translated_text: '早上好',
-            source_language: 'en' as const,
-            target_language: 'zh' as const,
-            user_id: input.user_id,
-            created_at: new Date(Date.now() - 3600000), // 1 hour ago
-            is_favorite: true
-        },
-        {
-            id: 5,
-            source_text: '谢谢',
-            translated_text: 'Thank you',
-            source_language: 'zh' as const,
-            target_language: 'en' as const,
-            user_id: input.user_id,
-            created_at: new Date(Date.now() - 7200000), // 2 hours ago
-            is_favorite: true
-        }
-    ]);
-}
+export const getFavorites = async (input: GetFavoritesInput): Promise<TranslationWithFavorite[]> => {
+  try {
+    // Build the complete query in one chain to avoid TypeScript issues
+    const results = await db.select()
+      .from(favoriteTranslationsTable)
+      .innerJoin(
+        translationsTable, 
+        eq(favoriteTranslationsTable.translation_id, translationsTable.id)
+      )
+      .where(eq(favoriteTranslationsTable.user_id, input.user_id))
+      .orderBy(desc(favoriteTranslationsTable.created_at))
+      .limit(input.limit)
+      .offset(input.offset)
+      .execute();
+
+    // Map the joined results to TranslationWithFavorite format
+    return results.map(result => ({
+      id: result.translations.id,
+      source_text: result.translations.source_text,
+      translated_text: result.translations.translated_text,
+      source_language: result.translations.source_language,
+      target_language: result.translations.target_language,
+      user_id: result.translations.user_id,
+      created_at: result.translations.created_at,
+      is_favorite: true // All returned records are favorites
+    }));
+  } catch (error) {
+    console.error('Get favorites failed:', error);
+    throw error;
+  }
+};
